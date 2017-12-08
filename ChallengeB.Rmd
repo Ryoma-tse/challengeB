@@ -1,0 +1,284 @@
+---
+title: "Challenge_B"
+author: "Kevin Nem Isabelle Boudier"
+date: "December 4, 2017"
+output: pdf_document
+---
+###Link to github repository https://github.com/Ryoma-tse/challengeB
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE) 
+```
+
+## All the plot are in the Appendix Below.
+
+##Task 1B - Predicting house prices in Ames, Iowa (continued)
+###Step 1 -  Choose a ML technique : non-parametric kernel estimation, random forests, etc... Give a brief intuition of how it works.
+We have chosen the Random Forest as the Machine Learning technique. This algorithm is highly efficient to understand the relationship between an outcome variable and its explanatory variables. Random forest solve classification and regressions problems. 
+The algorithm creates forest with trees. The idea is to create lots of trees which are generated from the training data to make the correlation between the trees smaller. Then, it reduces the variance in the trees by averaging them. Taking the average of the trees is used to reduce the variance and so it will improve the performance of the decision trees on the test data and it will avoid overfitting as well. 
+
+###Step 2 - Train the chosen technique on the training data. Hint : packages np for non-parametric regressions.
+In a first time we clean our data before using the ML algorithm, Once it is done, we can use the random forest function to the training data.
+```{r step2, message=FALSE, warning=FALSE, include=FALSE }
+train1 <- read.csv("train.csv")
+test1 <- read.csv("test.csv")
+
+attach(test1)
+attach(train1)
+
+
+#In a first place, we have to clean our data. We ckeck is there are missing values.
+sum(is.na.data.frame(train1))#There are 6965 missing values
+sum(is.na(test1))
+na_count <- sapply(train1, function(y) sum(length(which(is.na(y)))))
+na_count1 <- sapply(test1, function(y) sum(length(which(is.na(y)))))
+
+
+#We remove the variables with too much non available data
+train1$PoolQC <- NULL
+train1$Fence <- NULL
+train1$MiscFeature <- NULL
+train1$Alley <- NULL
+train1$FireplaceQu <- NULL
+train1$LotFrontage <- NULL
+
+
+test1$PoolQC <- NULL
+test1$Fence <- NULL
+test1$MiscFeature <- NULL
+test1$Alley <- NULL
+test1$FireplaceQu <- NULL
+test1$LotFrontage <- NULL
+
+train<- na.omit(train1) #we now consider the data without missing values
+test1 <- na.omit(test1)
+sum(is.na.data.frame(train))
+sum(is.na.data.frame(test1)) #Check if there is no missing values in the new dataset. Answer: no
+attach(train)
+#Now we can use the ML aglorithm: random forest. We install the package to do so.
+library(randomForest)
+library(lmtest) 
+library(tidyverse)
+```
+
+``` {r step2 random forest,echo=FALSE, warning= FALSE}
+#We estimate our model using the function randomForest with parsimonious variables
+train.rf <- randomForest(SalePrice ~ MSZoning + LotArea + Neighborhood + 
+              YearBuilt + OverallQual, data=train, ntree=10, set.seed(1))
+```
+###Step 3 - Make predictions on the test data, and compare them to the predictions of a linear regression of your choice.
+We make predictions on the test data and compare them to the predictions of a linear regression.
+See Figure in the appendix. We can see that it follow the 45 degree line, so the predictions are similar  but not identical.
+``` {r step3,echo=FALSE, message=FALSE, fig.show='hide'}
+#Predictions on the test data 
+prediction <- data.frame(SalePrice_predict = predict(train.rf, test1, type="response"))
+
+#Linear regression 
+model <- lm(SalePrice ~ MSZoning + LotArea + Neighborhood + 
+              YearBuilt + OverallQual, data=train)
+
+#Prediction of linear regression on the test data
+prediction_linear_reg <- data.frame(SalePrice_predict = predict(model, test1, type="response"))
+
+#including both prices in the data set test
+test1 <- test1 %>% mutate(SalePrice.rf=predict(object = train.rf, newdata=test1),SalePrice.lr=predict(object=model,  newdata=test1))
+
+
+attach(test1)
+#Compare the two sets of predictions
+ggplot(test1)+geom_point(mapping = aes(x=SalePrice.rf,y=SalePrice.lr))+geom_abline(intercept = 0, slope=1)
+```
+##Task 2B - Overfitting in Machine Learning (continued)
+
+Setting to continue from the end of Task2A (taken from the correction of challenge A)
+``` {r, include=FALSE, warning=FALSE}
+# Simulating an overfit
+library(tidyverse)
+library(np)
+library(caret)
+# True model : y = x^3 + epsilon
+set.seed(2)
+Nsim <- 150
+b <- c(0,1)
+x0 <- rep(1, Nsim)
+x1 <- rnorm(n = Nsim)
+
+X <- cbind(x0, x1^3)
+y.true <- X %*% b
+
+eps <- rnorm(n = Nsim)
+y <- X %*% b + eps
+
+df <- tbl_df(y[,1]) %>% rename(y = value) %>% bind_cols(tbl_df(x1)) %>% rename(x = value) %>% bind_cols(tbl_df(y.true[,1])) %>% rename(y.true = value)
+
+
+# Split sample into training and testing, 80/20
+training.index <- createDataPartition(y = y, times = 1, p = 0.8)
+df <- df %>% mutate(which.data = ifelse(1:n() %in% training.index$Resample1, "training", "test"))
+
+training <- df %>% filter(which.data == "training")
+test <- df %>% filter(which.data == "test")
+
+# Train linear model y ~ x on training
+lm.fit <- lm(y ~ x, data = training)
+
+# Train linear model y ~ x on test
+lm.fit2 <- lm(y~x, data=test)
+
+summary(lm.fit)
+
+training <- training %>% mutate(y.lm = predict(object = lm.fit))
+test <- test %>% mutate(y.lm=predict(object=lm.fit2))
+```
+###Step 1- Estimate a low-flexibility local linear model on the training data. 
+``` {r step 1, echo=FALSE}
+ll.fit.lowflex <- npreg(y ~ x, data = training, method = "ll", bws = 0.5)
+```
+###Step 2 - Estimate a high-flexibility local linear model on the training data.
+
+``` {r step 2, echo=FALSE}
+ll.fit.highflex <- npreg(y ~ x, data = training, method = "ll", bws = 0.01)
+```
+
+###Step 3 -  Plot the scatterplot of x-y, along with the predictions of ll.fit.lowflex and ll.fit.highflex on only the training data. See Figure in the Appendix
+We add the prediction of both linear model in the training data set.
+``` {r step 3, echo=FALSE, include=FALSE, message=FALSE, warning=FALSE,  fig.show='hide'}
+training <- training %>% mutate(y.ll.lowflex = predict(object = ll.fit.lowflex, newdata = training), y.ll.highflex = predict(object = ll.fit.highflex, newdata = training))
+
+attach(training)
+
+ggplot(data=training)+ geom_point( mapping = aes(x=x, y=y))  + geom_line(mapping = aes(x=x, y=y.true)) + geom_line( mapping=aes(x = x, y=y.ll.highflex), color="blue") +geom_line( mapping=aes(x=x, y=y.ll.lowflex), color="red")
+
+```
+###Step 4 - Between the two models, which predictions are more variable? Which predictions have the least bias?
+``` {r var training, echo=FALSE, fig.show='hide'}
+var <- cbind(var(training$y.ll.highflex), var(training$y.ll.lowflex))
+colnames(var) <- c("highflex","lowflex")
+var
+
+```
+
+``` {r bias training, echo=FALSE}
+bias <- cbind(mean(y.true), mean(training$y.ll.highflex), mean(training$y.ll.lowflex))
+colnames(bias) <- c("true model","highflex","lowflex")
+abs(bias)
+```
+The most variable prediction is the high-flexibility model. The model high-flexibility gave the least bias.
+
+###Step 5 -Plot the scatterplot of x-y, along with the predictions of ll.fit.lowflex and ll.fit.highflex now using the test data. See Figure in the Appendix
+``` {r step 5 ,echo=FALSE, fig.show='hide'}
+ll.fit.lowflex2 <- npreg(y ~ x, data = test, method = "ll", bws = 0.5)
+ll.fit.highflex2 <- npreg(y ~ x, data = test, method = "ll", bws = 0.01)
+test <- test %>% mutate(y.ll.lowflex2=predict(object= ll.fit.lowflex2, newdata=test), y.ll.highflex2=predict(object=ll.fit.highflex2, newdata=test))
+ggplot(data=test)+ geom_point( mapping = aes(x=x, y=y))  + geom_line(mapping = aes(x=x, y=y.true)) + geom_line( mapping=aes(x = x, y=y.ll.highflex2), color="blue") +geom_line( mapping=aes(x=x, y=y.ll.lowflex2), color="red")
+```
+```{r var test, echo=FALSE}
+var.test <- cbind(var(test$y.ll.highflex2), var(test$y.ll.lowflex2))
+colnames(var.test) <- c("high","low")
+var.test
+```
+
+```{r bias test, echo=FALSE}
+bias <- cbind(mean(y.true), mean(test$y.ll.highflex2), mean(test$y.ll.lowflex2))
+colnames(bias) <- c("true model","highflex","lowflex")
+bias
+```
+The prediction of the highflexibility model is the most variable. The highflexibility model have the least bias but it increase a lot for both predictions.
+
+###Step 6 -  Create a vector of bandwidth going from 0.01 to 0.5 with a step of 0.001
+``` {r step 6, echo=FALSE}
+bw <- seq(0.01, 0.5, by = 0.001)
+```
+###Step 7 - Estimate a local linear model y ~ x on the training data with each bandwidth.
+``` {r step 7, echo=FALSE }
+llbw.fit <- lapply(X = bw, FUN = function(bw) {npreg(y ~ x, data = training, method = "ll", bws = bw)})
+```
+###Step 8 - Compute for each bandwidth the MSE on the training data.
+``` {r step 8, echo=FALSE}
+mse.training <- function(fit.model){
+  predictions <- predict(object = fit.model, newdata = training)
+  training %>% mutate(squared.error = (y - predictions)^2) %>% summarize(mse = mean(squared.error))
+}
+mse.train.results <- unlist(lapply(X = llbw.fit, FUN = mse.training))
+
+```
+###Step 9 - Compute for each bandwidth the MSE on the test data.
+``` {r step 9, echo=FALSE}
+mse.test <- function(fit.model){
+  predictions <- predict(object = fit.model, newdata = test)
+  test %>% mutate(squared.error = (y - predictions)^2) %>% summarize(mse = mean(squared.error))
+}
+mse.test.results <- unlist(lapply(X = llbw.fit, FUN = mse.test))
+
+```
+
+###Step 10 - Draw on the same plot how the MSE on training data, and test data, change when the bandwidth
+See Figure in the Appendix
+``` {r step 10, echo=FALSE, fig.show='hide'}
+mse.df <- tbl_df(data.frame(bandwidth = bw, mse.train = mse.train.results, mse.test = mse.test.results))
+attach(mse.df)
+ggplot(mse.df) + geom_line(mapping=aes(x=bandwidth, y=mse.train), color="blue")  + geom_line(mapping=aes(x = bandwidth, y=mse.test), color="orange")
+```
+##Task 3 -  Privacy regulation compliance in France
+``` {r loading packages,include= FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+
+```
+###Step 1 - We import the CNIL data set
+```{r Step 1,echo=FALSE, warning=FALSE}
+CIL <- read.csv2(file="CIL1115.csv", header = TRUE,fill=TRUE, sep=";", 
+                  na.strings = "EMPTY", strip.white = TRUE, comment.char="", 
+                  stringsAsFactors = FALSE)
+
+```
+###Step 2 -We create the table withe the number of organisations that has nominated a CNIL per department
+```{r Step 2,echo=FALSE, warning=FALSE}
+Departement <- data.frame(Departement=str_sub(CIL$Code_Postal,start=1, end=2))
+nb_dpt <- tbl_df(table(Departement))
+nb_dpt <- nb_dpt[-(1:2),]
+nb_dpt <- nb_dpt[-(98:107),]
+nb_dpt
+```
+###Step 3 - We import the siren data set, as we didn't manage to import the whole data (computer crashed several time) we limited the number of row at 100 000. and merge it with CNIL dataset. We know that by using fread we could have import the data but it doesnt work in our computer.
+```{r Step 3, echo=FALSE, message=FALSE, warning=FALSE }
+system.time (siren<-read.csv2(file = file.choose(), header = TRUE,fill=TRUE, sep=";", 
+                  na.strings = "EMPTY", strip.white = TRUE, comment.char="", 
+                  stringsAsFactors = FALSE, nrows = 100000))
+attach(CIL)
+CIL <- rename(CIL, SIREN = ï..Siren)
+merge <- inner_join(CIL,siren)
+```
+###Step 4 -  We plot the histogram  of the size of the companies that nominated a CIL. Our data set is not compete so we cannot make any conclusion or relevant comment.See Figure in the Appendix
+```{r, echo=FALSE,fig.show='hide'}
+ggplot(merge)+ geom_bar(aes(TEFET))
+```
+##APPENDIX
+```{r appendix, echo=FALSE}
+ggplot(test1)+geom_point(mapping = aes(x=test1$SalePrice.rf,y=test1$SalePrice.lr))+geom_abline(intercept = 0, slope=1)
+
+##task 2
+ggplot(data=training)+ geom_point( mapping = aes(x=x, y=y))  + geom_line(mapping = aes(x=x, y=y.true)) + geom_line( mapping=aes(x = x, y=y.ll.highflex), color="blue") +geom_line( mapping=aes(x=x, y=y.ll.lowflex), color="red")
+
+ggplot(data=test)+ geom_point( mapping = aes(x=x, y=y))  + geom_line(mapping = aes(x=x, y=y.true)) + geom_line( mapping=aes(x = x, y=y.ll.highflex2), color="blue") +geom_line( mapping=aes(x=x, y=y.ll.lowflex2), color="red")
+
+ggplot(mse.df) + geom_line(mapping=aes(x=bandwidth, y=mse.train), color="blue") +
+  geom_line(mapping=aes(x = bandwidth, y=mse.test), color="orange")
+
+ggplot(merge)+ geom_bar(aes(TEFET))
+```
+
+Legend for number of employee
+
+01 = 1 ou 2 -
+02 = 3 à 5 -
+03 = 6 à 9 -
+11 = 10 à 19 - 
+12 = 20 à 49 -
+21 = 50 à 99 -
+22 = 100 à 199 -
+31 = 200 à 249 -
+32 = 250 à 499 -
+41 = 500 à 999 -
+42 = 1 000 -
+51 = 2 000 
